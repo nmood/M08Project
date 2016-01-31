@@ -1,0 +1,119 @@
+---
+title: "Practical Machine Learning: Course Project"
+output: html_document
+---
+***
+# Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.   
+
+The goal of this project is to predict the manner in which 6 participants did the exercise. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.   
+
+# Data Processing
+
+For this project, we will use the training data from (https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) and the test data from (https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)   
+
+Firstly, load the related R packages for this analysis and load the training and testing datasets.   
+
+```{r warning = FALSE}
+library(caret)
+library(rattle) 
+library(rpart) 
+library(rpart.plot)
+library(randomForest) 
+library(repmis)
+```
+  
+```{r warning = FALSE}
+training <- read.csv("pml-training.csv", na.strings = c("NA", ""))
+testing <- read.csv("pml-testing.csv", na.strings = c("NA", ""))
+```   
+The training dataset has 9,622 observations with 160 variables and the testing dataset has 20 observations with 160 variables. One of the variables is "classe" which we are trying to predict the outcome.   
+
+Some of the variables have missing value, therefore we delete the variables or predictors that contain any missing values.   
+
+```{r warning = FALSE}
+training <- training[, colSums(is.na(training)) == 0]
+testing <- testing[, colSums(is.na(testing)) == 0]
+```
+    
+We also delete the predictors that have a little predicting power to the classe variable.   
+
+```{r warning = FALSE}
+#remove the first 7 predictors:
+# X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new-window, num_window
+newTrain <- training[, -c(1:7)]
+newTest <- testing[, -c(1:7)]
+```
+   
+# Model Building   
+To get the out-of-sample error, we split the training dataset into the prediction dataset (train1) and validation dataset (train2) with 70% dan 30%.    
+
+```{r warning = FALSE}
+set.seed(4321)
+myTrain <- createDataPartition(newTrain$classe, p = 0.7, list = FALSE)
+train1 <- newTrain[myTrain, ]
+train2 <- newTrain[-myTrain, ]
+```
+   
+Then, We use classification trees and random forests to predict the outcome.   
+   
+##Classification Trees   
+
+```{r warning = FALSE}
+#Classification trees
+control <- trainControl(method = "cv", number = 5)
+fit_rpart <- train(classe ~ ., data = train1, method = "rpart", trControl = control)
+print(fit_rpart, digits = 4)
+
+fancyRpartPlot(fit_rpart$finalModel)
+
+# predict outcomes using validation set
+predict_rpart <- predict(fit_rpart, train2)
+
+(conf_rpart <- confusionMatrix(train2$classe, predict_rpart))
+
+(accuracy_rpart <- conf_rpart$overall[1])
+```
+From the confusion matrix, the accuracy rate is 0.5, so the out-of-sample error rate is 0.5. Therefore, using classification tree does not predict the outcome classe very well.   
+
+##Random Forest   
+
+```{r warning = FALSE}
+fit_rf <- train(classe ~ ., data = train1, method = "rf", trControl = control)
+print(fit_rf, digits = 4)
+
+# predict outcomes using validation set
+predict_rf <- predict(fit_rf, train2)
+
+(conf_rf <- confusionMatrix(train2$classe, predict_rf))
+
+(accuracy_rf <- conf_rf$overall[1])
+```
+   
+The accuracy rate of the Random forest is 0.992,  so the out-of-sample error rate is 0.008. Therefore random forest method is much better than classification tree method.    
+
+# Prediction on Testing Dataset   
+
+Finally, we use random forests to predict the outcome variable classe for the testing dataset and create a function to generate the predictions to individual files.   
+
+```{r warning = FALSE}
+#predict on test dataset
+preds <- predict(fit_rf, newTest)
+
+#convert predictions to character vector
+preds <- as.character(preds)
+
+#function to write predictions to files
+pml_write_files <- function(x) {
+  n <- length(x)
+  for(i in 1:n) {
+    filename <- paste0("problem_id_", i, ".txt")
+    write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+  }
+} 
+
+#create prediction files
+pml_write_files(preds)
+```
+***
+  
